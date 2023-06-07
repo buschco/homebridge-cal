@@ -1,15 +1,25 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
+  "pluginAlias": "HomebridgeCal",
   "pluginType": "platform",
   "singular": true,
   "schema": {
     "type": "object",
     "properties": {
-      "name": {
-        "title": "Name",
+      "calurl": {
+        "title": "ical url",
         "type": "string",
         "required": true,
-        "default": "Example Dynamic Platform"
+        "default": "ical link starting with https"
+      },
+      "events": {
+        "title": "events",
+        "items": {
+          "title": "name of event",
+          "type": "string"
+        }
+        "type": "array",
+        "required": true,
+        "default": "keywords that are triggered by events"
       }
     }
   }
