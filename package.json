@@ -1,8 +1,7 @@
 {
-  "private": true,
   "displayName": "Homebridge Cal",
   "name": "homebridge-cal",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Homebridge plugin that triggers motion sensors based on calender events",
   "license": "Apache-2.0",
   "repository": {
