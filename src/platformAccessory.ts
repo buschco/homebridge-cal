@@ -1,5 +1,5 @@
 import { Service, PlatformAccessory } from "homebridge";
-import { HomebridgeCalPlatform } from "./platform";
+import { HomebridgeCalPlatform } from "./platform.js";
 
 export class HomebridgeCalAccessory {
   private service: Service;
@@ -33,7 +33,15 @@ export class HomebridgeCalAccessory {
       .onGet(this.handleMotionDetectedGet.bind(this));
 
     setInterval(() => {
-      this.state.MotionDetected = !this.state.MotionDetected;
+      const motionDetected =
+        this.platform.lastScrape.eventsToday.find((event) =>
+          event.name
+            .toLowerCase()
+            .includes(this.accessory.context.device.name.toLowerCase())
+        ) != null;
+
+      this.state.MotionDetected = motionDetected;
+
       this.service.updateCharacteristic(
         this.platform.Characteristic.MotionDetected,
         this.state.MotionDetected

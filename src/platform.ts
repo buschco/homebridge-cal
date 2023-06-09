@@ -1,3 +1,6 @@
+import dayjs from "dayjs";
+import fetch from "node-fetch";
+import ICAL from "ical.js";
 import {
   API,
   DynamicPlatformPlugin,
@@ -7,22 +10,22 @@ import {
   Service,
   Characteristic,
 } from "homebridge";
-import { HomebridgeCalAccessory } from "./platformAccessory";
+import { HomebridgeCalAccessory } from "./platformAccessory.js";
+import { PLATFORM_NAME, PLUGIN_NAME } from "./settings.js";
+import { access } from "fs";
 
-import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
-
-/**
- * HomebridgePlatform
- * This class is the main constructor for your plugin, this is where you should
- * parse the user config and discover/register accessories with Homebridge.
- */
 export class HomebridgeCalPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic =
     this.api.hap.Characteristic;
 
-  // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
+
+  private interval;
+  public lastScrape: {
+    eventsToday: { start: string; name: string }[];
+    today?: string;
+  } = { eventsToday: [], today: undefined };
 
   constructor(
     public readonly log: Logger,
@@ -31,34 +34,92 @@ export class HomebridgeCalPlatform implements DynamicPlatformPlugin {
   ) {
     this.log.debug("Finished initializing platform:", this.config.name);
 
-    // When this event is fired it means Homebridge has restored all cached accessories from disk.
-    // Dynamic Platform plugins should only register new accessories after this event was fired,
-    // in order to ensure they weren't added to homebridge already. This event can also be used
-    // to start discovery of new accessories.
+    const scrapeBindedWhyDoClassesSuckSoHard = this.scrapeCalendar.bind(this);
+    scrapeBindedWhyDoClassesSuckSoHard();
+
     this.api.on("didFinishLaunching", () => {
-      log.debug("Executed didFinishLaunching callback");
-      // run the method to discover / register your devices as accessories
+      this.interval = setInterval(
+        scrapeBindedWhyDoClassesSuckSoHard,
+        10 * 60 * 1000
+      );
       this.discoverDevices();
+    });
+
+    this.api.on("shutdown", () => {
+      if (this.interval == null) return;
+      clearInterval(this.interval);
     });
   }
 
-  /**
-   * This function is invoked when homebridge restores cached accessories from disk at startup.
-   * It should be used to setup event handlers for characteristics and update respective values.
-   */
   configureAccessory(accessory: PlatformAccessory) {
-    this.log.info("Loading accessory from cache:", accessory.displayName);
+    this.log.info("cb Loading accessory from cache:", accessory.displayName);
 
-    // add the restored accessory to the accessories cache so we can track if it has already been registered
     this.accessories.push(accessory);
   }
 
-  /**
-   * This is an example method showing how to register discovered accessories.
-   * Accessories must only be registered once, previously created accessories
-   * must not be registered again to prevent "duplicate UUID" errors.
-   */
+  async scrapeCalendar() {
+    try {
+      if (
+        this.lastScrape.today != null &&
+        dayjs(this.lastScrape.today).add(4, "hours").isBefore() === false
+      ) {
+        return;
+      }
+
+      this.log.info("scraping calendar");
+      if (
+        this.config.calurl == null ||
+        this.config.calurl.startsWith("http") === false
+      ) {
+        throw new Error(`calurl missing or invalid: [${this.config.calurl}]`);
+      }
+
+      const response = await fetch(this.config.calurl);
+      const iCalText = await response.text();
+
+      const jCalData = ICAL.parse(iCalText);
+      if (jCalData[0] !== "vcalendar") {
+        throw new Error("no calendar data found");
+      }
+
+      const vCalendar = new ICAL.Component(jCalData);
+      const vEvents = vCalendar.getAllSubcomponents("vevent");
+      const vTimezone = vCalendar.getFirstSubcomponent("vtimezone");
+
+      const eventsToday: {
+        start: string;
+        name: string;
+      }[] = [];
+
+      const now = dayjs();
+
+      vEvents.forEach((vEvents) => {
+        const event = new ICAL.Event(vEvents);
+
+        if (vTimezone) {
+          const zone = new ICAL.Timezone(vTimezone);
+          event.startDate = event.startDate.convertToZone(zone);
+          event.endDate = event.endDate.convertToZone(zone);
+        }
+
+        const eventStart = dayjs(event.startDate.toJSDate());
+
+        if (eventStart.isSame(now, "day") === false) return;
+
+        eventsToday.push({
+          name: event.summary,
+          start: eventStart.toISOString(),
+        });
+      });
+
+      this.lastScrape = { eventsToday, today: now.toISOString() };
+    } catch (error) {
+      this.log.error(error instanceof Error ? error.message : "unknown error");
+    }
+  }
+
   discoverDevices() {
+    let existingAccessories = [...this.accessories];
     (this.config.events ?? []).forEach((deviceName) => {
       const uuid = this.api.hap.uuid.generate(deviceName);
 
@@ -66,52 +127,31 @@ export class HomebridgeCalPlatform implements DynamicPlatformPlugin {
         (accessory) => accessory.UUID === uuid
       );
 
-      // generate a unique id for the accessory this should be generated from
-      // something globally unique, but constant, for example, the device serial
-      // number or MAC address
-
-      // see if an accessory with the same uuid has already been registered and restored from
-      // the cached devices we stored in the `configureAccessory` method above
-
-      if (existingAccessory) {
-        // the accessory already exists
+      if (existingAccessory != null) {
+        existingAccessories = existingAccessories.filter(
+          (accessory) => accessory.UUID !== uuid
+        );
         this.log.info(
           "Restoring existing accessory from cache:",
           existingAccessory.displayName
         );
 
-        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
-        // existingAccessory.context.device = device;
-        // this.api.updatePlatformAccessories([existingAccessory]);
-
-        // create the accessory handler for the restored accessory
-        // this is imported from `platformAccessory.ts`
         new HomebridgeCalAccessory(this, existingAccessory);
-
-        // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
-        // remove platform accessories when no longer present
-        // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-        // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
       } else {
-        // the accessory does not yet exist, so we need to create it
         this.log.info("Adding new accessory:", deviceName);
-
-        // create a new accessory
         const accessory = new this.api.platformAccessory(deviceName, uuid);
-
-        // store a copy of the device object in the `accessory.context`
-        // the `context` property can be used to store any data about the accessory you may need
         accessory.context.device = { name: deviceName };
-
-        // create the accessory handler for the newly create accessory
-        // this is imported from `platformAccessory.ts`
         new HomebridgeCalAccessory(this, accessory);
 
-        // link the accessory to your platform
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
           accessory,
         ]);
       }
     });
+    this.api.unregisterPlatformAccessories(
+      PLUGIN_NAME,
+      PLATFORM_NAME,
+      existingAccessories
+    );
   }
 }

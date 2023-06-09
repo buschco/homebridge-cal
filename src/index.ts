@@ -1,7 +1,7 @@
 import { API } from "homebridge";
-import { HomebridgeCalPlatform } from "./platform";
-import { PLATFORM_NAME } from "./settings";
+import { HomebridgeCalPlatform } from "./platform.js";
+import { PLATFORM_NAME } from "./settings.js";
 
-export = (api: API) => {
+export default (api: API) => {
   api.registerPlatform(PLATFORM_NAME, HomebridgeCalPlatform);
 };

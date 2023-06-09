@@ -1,4 +1,4 @@
-{
+{esl
   "parser": "@typescript-eslint/parser",
   "extends": [
     "eslint:recommended",
@@ -16,7 +16,7 @@
     "semi": ["off"],
     "comma-dangle": ["off", "always-multiline"],
     "dot-notation": "off",
-    "eqeqeq": "warn",
+    "eqeqeq": "off",
     "curly": ["warn", "all"],
     "brace-style": ["warn"],
     "prefer-arrow-callback": ["warn"],
