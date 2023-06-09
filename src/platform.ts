@@ -12,7 +12,6 @@ import {
 } from "homebridge";
 import { HomebridgeCalAccessory } from "./platformAccessory.js";
 import { PLATFORM_NAME, PLUGIN_NAME } from "./settings.js";
-import { access } from "fs";
 
 export class HomebridgeCalPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
@@ -46,7 +45,9 @@ export class HomebridgeCalPlatform implements DynamicPlatformPlugin {
     });
 
     this.api.on("shutdown", () => {
-      if (this.interval == null) return;
+      if (this.interval == null) {
+        return;
+      }
       clearInterval(this.interval);
     });
   }
@@ -104,7 +105,9 @@ export class HomebridgeCalPlatform implements DynamicPlatformPlugin {
 
         const eventStart = dayjs(event.startDate.toJSDate());
 
-        if (eventStart.isSame(now, "day") === false) return;
+        if (eventStart.isSame(now, "day") === false) {
+          return;
+        }
 
         eventsToday.push({
           name: event.summary,
